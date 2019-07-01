@@ -1,19 +1,18 @@
 const fs = require('fs-extra');
 const path = require('path');
-const {ConcatSource, RawSource} = require('webpack-sources');
+const { ConcatSource, RawSource } = require('webpack-sources');
 const {
   createSchemaContentWithLocales,
-  combineLocales,
+  combineLocales
 } = require('@shopify/slate-translations');
 
-const DEFAULT_GENERIC_TEMPLATE_NAME = 'template.liquid';
+// Remove this default
+// const DEFAULT_GENERIC_TEMPLATE_NAME = 'template.liquid';
 const PLUGIN_NAME = 'Slate Sections Plugin';
 
 module.exports = class sectionsPlugin {
   constructor(options = {}) {
     this.options = this._validateOptions(options);
-    this.options.genericTemplateName =
-      this.options.genericTemplateName || DEFAULT_GENERIC_TEMPLATE_NAME;
   }
 
   apply(compiler) {
@@ -28,33 +27,34 @@ module.exports = class sectionsPlugin {
     compilation.contextDependencies.add(this.options.from);
 
     return Promise.all(
-      files.map(async (file) => {
+      files.map(async file => {
         const fileStat = await fs.stat(path.resolve(this.options.from, file));
         if (fileStat.isDirectory()) {
+          // Expect a file same name as folder for locales to work
           const pathToLiquidFile = path.resolve(
             this.options.from,
             file,
-            this.options.genericTemplateName,
+            `${file}.liquid`
           );
           const outputKey = this._getOutputKey(
             pathToLiquidFile,
-            compilationOutput,
+            compilationOutput
           );
           compilation.assets[
             outputKey
           ] = await this._getWebpackSourceForDirectory(
-            path.resolve(this.options.from, file),
+            path.resolve(this.options.from, file)
           );
         } else if (fileStat.isFile() && path.extname(file) === '.liquid') {
           const outputKey = this._getOutputKey(
             path.resolve(this.options.from, file),
-            compilationOutput,
+            compilationOutput
           );
           compilation.assets[outputKey] = await this._getLiquidSource(
-            path.resolve(this.options.from, file),
+            path.resolve(this.options.from, file)
           );
         }
-      }),
+      })
     );
   }
 
@@ -78,14 +78,13 @@ module.exports = class sectionsPlugin {
    * @returns The output file name of the liquid file.
    */
   _getOutputFileName(relativePathFromSections) {
-    if (
-      path.basename(relativePathFromSections) ===
-      this.options.genericTemplateName
-    ) {
+    // If its a directory, get the liquid file in it
+    if (path.parse(relativePathFromSections).dir) {
       const sectionName = relativePathFromSections.split(path.sep)[0];
       return `${sectionName}.liquid`;
+    } else {
+      return relativePathFromSections;
     }
-    return relativePathFromSections;
   }
 
   /**
@@ -100,7 +99,7 @@ module.exports = class sectionsPlugin {
   _getOutputKey(liquidSourcePath, compilationOutput) {
     const relativePathFromSections = path.relative(
       this.options.from,
-      liquidSourcePath,
+      liquidSourcePath
     );
 
     const fileName = this._getOutputFileName(relativePathFromSections);
@@ -108,7 +107,7 @@ module.exports = class sectionsPlugin {
     // The relative path from the output set in webpack, to the specified output for sections in slate config
     const relativeOutputPath = path.relative(
       compilationOutput,
-      this.options.to,
+      this.options.to
     );
 
     return path.join(relativeOutputPath, fileName);
@@ -134,12 +133,9 @@ module.exports = class sectionsPlugin {
    */
   async _getWebpackSourceForDirectory(directoryPath) {
     const files = await fs.readdir(directoryPath);
-
-    const liquidSourcePath = path.resolve(
-      directoryPath,
-      this.options.genericTemplateName,
-    );
-
+    // Get the liquid file. Needs error checking to make sure there is just one and it matches folder
+    const liquidFile = files.filter(f => f.includes('.liquid'));
+    const liquidSourcePath = path.resolve(directoryPath, liquidFile[0]);
     const liquidSource = await this._getLiquidSource(liquidSourcePath);
 
     if (files.includes('schema.json')) {
@@ -150,16 +146,16 @@ module.exports = class sectionsPlugin {
       const schemaContent = combinedLocales
         ? await createSchemaContentWithLocales(
             combinedLocales,
-            path.resolve(directoryPath, 'schema.json'),
+            path.resolve(directoryPath, 'schema.json')
           )
         : JSON.stringify(
             await fs.readJSON(path.resolve(directoryPath, 'schema.json')),
             null,
-            2,
+            2
           );
 
       const schemaSource = new RawSource(
-        `{% schema %}\n${schemaContent}\n{% endschema %}`,
+        `{% schema %}\n${schemaContent}\n{% endschema %}`
       );
 
       return new ConcatSource(liquidSource, schemaSource);
